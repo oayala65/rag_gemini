@@ -3,135 +3,484 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini PDF Chatbot</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>PDF RAG Chat</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
-        #chat-box { height: 60vh; overflow-y: auto; scroll-behavior: smooth; }
-        .user-msg { background-color: #3b82f6; color: white; align-self: flex-end; border-radius: 12px 12px 2px 12px; }
-        .ai-msg { background-color: #f3f4f6; color: #1f2937; align-self: flex-start; border-radius: 12px 12px 12px 2px; }
+        :root {
+            --bg: #0f0f10;
+            --surface: #1a1a1d;
+            --surface2: #242428;
+            --border: #2e2e34;
+            --accent: #00e5ff;
+            --accent2: #7c3aed;
+            --text: #e8e8f0;
+            --muted: #6b6b7b;
+            --user-bg: #1e1b4b;
+            --ai-bg: #1a1a1d;
+            --error: #ff4d6d;
+            --success: #00e5a0;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg);
+            font-family: 'IBM Plex Sans', sans-serif;
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem 1rem;
+        }
+
+        /* Subtle grid background */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: 
+                linear-gradient(var(--border) 1px, transparent 1px),
+                linear-gradient(90deg, var(--border) 1px, transparent 1px);
+            background-size: 40px 40px;
+            opacity: 0.3;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 780px;
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        header {
+            text-align: center;
+            padding: 1rem 0 0.5rem;
+        }
+
+        header h1 {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 1.6rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            color: var(--text);
+        }
+
+        header h1 span {
+            color: var(--accent);
+        }
+
+        header p {
+            color: var(--muted);
+            font-size: 0.8rem;
+            margin-top: 0.3rem;
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .config-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+        }
+
+        @media (max-width: 560px) { .config-row { grid-template-columns: 1fr; } }
+
+        .config-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem;
+        }
+
+        .config-card label {
+            display: block;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--accent);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
+        }
+
+        .config-card input[type="password"],
+        .config-card select {
+            width: 100%;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.55rem 0.75rem;
+            color: var(--text);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.82rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .config-card input[type="password"]:focus,
+        .config-card select:focus {
+            border-color: var(--accent);
+        }
+
+        .config-card select option { background: var(--surface2); }
+
+        .file-label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: var(--surface2);
+            border: 1px dashed var(--border);
+            border-radius: 6px;
+            padding: 0.55rem 0.75rem;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+            font-size: 0.82rem;
+            color: var(--muted);
+        }
+
+        .file-label:hover { border-color: var(--accent); background: #1f2a2a; color: var(--text); }
+        .file-label.ready { border-color: var(--success); color: var(--success); }
+        .file-label input { display: none; }
+
+        /* Chat */
+        #chat-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1rem;
+            min-height: 340px;
+            max-height: 55vh;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            scroll-behavior: smooth;
+        }
+
+        #chat-box::-webkit-scrollbar { width: 5px; }
+        #chat-box::-webkit-scrollbar-track { background: transparent; }
+        #chat-box::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+        .msg {
+            max-width: 82%;
+            padding: 0.7rem 1rem;
+            font-size: 0.88rem;
+            line-height: 1.55;
+            border-radius: 10px;
+            animation: fadeUp 0.25s ease both;
+        }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(6px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .msg.user {
+            background: var(--user-bg);
+            border: 1px solid #3730a3;
+            color: #c7d2fe;
+            align-self: flex-end;
+            border-radius: 10px 10px 2px 10px;
+        }
+
+        .msg.ai {
+            background: var(--ai-bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            align-self: flex-start;
+            border-radius: 10px 10px 10px 2px;
+        }
+
+        .msg.ai.error { border-color: var(--error); color: var(--error); }
+
+        .msg-label {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.65rem;
+            color: var(--muted);
+            letter-spacing: 0.06em;
+            margin-bottom: 0.3rem;
+            text-transform: uppercase;
+        }
+
+        /* Thinking dots */
+        .thinking span {
+            display: inline-block;
+            width: 6px; height: 6px;
+            background: var(--accent);
+            border-radius: 50%;
+            margin: 0 2px;
+            animation: bounce 1.2s infinite;
+        }
+        .thinking span:nth-child(2) { animation-delay: 0.2s; }
+        .thinking span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes bounce {
+            0%, 80%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-6px); }
+        }
+
+        /* Input bar */
+        .input-bar {
+            display: flex;
+            gap: 0.5rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 0.5rem;
+        }
+
+        .input-bar input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--text);
+            font-family: 'IBM Plex Sans', sans-serif;
+            font-size: 0.9rem;
+            padding: 0.4rem 0.5rem;
+        }
+
+        .input-bar input::placeholder { color: var(--muted); }
+
+        .input-bar input:disabled { opacity: 0.5; }
+
+        #sendBtn {
+            background: var(--accent);
+            color: #000;
+            border: none;
+            border-radius: 7px;
+            padding: 0.5rem 1.2rem;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+            letter-spacing: 0.03em;
+        }
+
+        #sendBtn:hover:not(:disabled) { opacity: 0.85; transform: scale(0.98); }
+        #sendBtn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--muted);
+            padding: 0 0.25rem;
+        }
+
+        .dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: var(--muted);
+            flex-shrink: 0;
+        }
+        .dot.ready { background: var(--success); box-shadow: 0 0 6px var(--success); }
+        .dot.error { background: var(--error); }
     </style>
 </head>
-<body class="bg-slate-50 font-sans">
+<body>
+<div class="container">
 
-    <div class="max-w-4xl mx-auto p-4 md:p-8">
-        <header class="text-center mb-8">
-            <h1 class="text-3xl font-extrabold text-slate-800">📄 PDF RAG Chat</h1>
-            <p class="text-slate-500 italic text-sm">Strictly using your PDF content</p>
-        </header>
+    <header>
+        <h1>// PDF <span>RAG</span> CHAT</h1>
+        <p>answers strictly from your document</p>
+    </header>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                <label class="block text-sm font-semibold text-slate-700 mb-1">1. Your Gemini API Key</label>
-                <input type="password" id="apiKey" placeholder="AIzaSy..." 
-                    class="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none">
-            </div>
-            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                <label class="block text-sm font-semibold text-slate-700 mb-1">2. Upload PDF Document</label>
-                <input type="file" id="pdfFile" accept="application/pdf" 
-                    class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
-            </div>
+    <div class="config-row">
+        <div class="config-card">
+            <label>01 — Gemini API Key</label>
+            <input type="password" id="apiKey" placeholder="AIzaSy...">
         </div>
-
-        <div id="chat-box" class="bg-white border border-slate-200 rounded-xl p-4 mb-4 flex flex-col gap-3 shadow-inner min-h-[300px]">
-            <div class="ai-msg p-3 max-w-[80%]">
-                Hello! Enter your key and upload a PDF. I will only answer using information from that file.
-            </div>
-        </div>
-
-        <div class="flex gap-2 bg-white p-2 rounded-xl shadow-md border border-slate-200">
-            <input type="text" id="userInput" placeholder="Ask a question..." 
-                class="flex-1 p-3 outline-none disabled:bg-slate-100 rounded-lg">
-            <button onclick="handleQuery()" id="sendBtn" 
-                class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold transition-all disabled:opacity-50">
-                Send
-            </button>
+        <div class="config-card">
+            <label>02 — Upload PDF</label>
+            <label class="file-label" id="fileLabel">
+                <span>📄</span>
+                <span id="fileNameDisplay">Choose a PDF file…</span>
+                <input type="file" id="pdfFile" accept="application/pdf">
+            </label>
         </div>
     </div>
 
-    <!-- SDK IMPORT -->
-    <script type="module">
-        import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai@0.16.0";
+    <div id="chat-box">
+        <div class="msg ai">
+            <div class="msg-label">// assistant</div>
+            Enter your Gemini API key and upload a PDF. I will answer <em>only</em> using content from that document.
+        </div>
+    </div>
 
-        let pdfData = null;
+    <div class="status-bar">
+        <div class="dot" id="statusDot"></div>
+        <span id="statusText">Waiting for setup…</span>
+    </div>
 
-        // Process PDF to Base64
-        document.getElementById('pdfFile').addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
+    <div class="input-bar">
+        <input type="text" id="userInput" placeholder="Ask something about the document…">
+        <button id="sendBtn" onclick="handleQuery()">Send →</button>
+    </div>
 
-            const reader = new FileReader();
-            reader.onload = function() {
-                pdfData = reader.result.split(',')[1];
-                addMessage('ai', `✅ Document "<b>${file.name}</b>" is ready.`);
-            };
-            reader.readAsDataURL(file);
-        });
+</div>
 
-        window.handleQuery = async () => {
-            const apiKey = document.getElementById('apiKey').value.trim();
-            const prompt = document.getElementById('userInput').value.trim();
-            const btn = document.getElementById('sendBtn');
+<script type="module">
+    // ─── FIX: Use the v1 (stable) endpoint via direct fetch instead of the SDK
+    // The SDK defaults to v1beta which no longer supports gemini-1.5-flash by name.
+    // We call the REST API directly with the correct endpoint.
 
-            if (!apiKey) return alert("Please enter your API Key.");
-            if (!pdfData) return alert("Please upload a PDF.");
-            if (!prompt) return;
+    const MODELS = [
+        "gemini-2.0-flash",
+        "gemini-1.5-flash-001",
+        "gemini-1.5-pro-001",
+    ];
 
-            addMessage('user', prompt);
-            document.getElementById('userInput').value = '';
-            btn.disabled = true;
-            const loadingId = addMessage('ai', 'Thinking...');
+    // Try to pick a working model automatically
+    let chosenModel = MODELS[0];
 
-            try {
-                const genAI = new GoogleGenerativeAI(apiKey);
-                
-                // Using gemini-1.5-flash-latest to avoid 404 version issues
-                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+    let pdfData = null;
+    let pdfMime = "application/pdf";
 
-                // Constructing a strict prompt
-                const strictPrompt = `
-                    INSTRUCTIONS: Use ONLY the following PDF content to answer the question. 
-                    If the answer is not in the document, say "I cannot find this in the document."
-                    
-                    QUESTION: ${prompt}
-                `;
+    // ── File upload ──────────────────────────────────────────────
+    document.getElementById('pdfFile').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
 
-                const result = await model.generateContent([
-                    {
-                        inlineData: {
-                            data: pdfData,
-                            mimeType: "application/pdf"
-                        }
-                    },
-                    { text: strictPrompt }
-                ]);
+        const reader = new FileReader();
+        reader.onload = function () {
+            pdfData = reader.result.split(',')[1];
+            document.getElementById('fileNameDisplay').textContent = file.name;
+            document.getElementById('fileLabel').classList.add('ready');
+            setStatus('ready', `Document ready: ${file.name}`);
+            addMessage('ai', `✅ <b>${file.name}</b> loaded. Ask me anything about it.`);
+        };
+        reader.readAsDataURL(file);
+    });
 
-                const responseText = result.response.text();
-                updateMessage(loadingId, responseText);
+    // ── Send on Enter ────────────────────────────────────────────
+    document.getElementById('userInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleQuery(); }
+    });
 
-            } catch (error) {
-                console.error(error);
-                updateMessage(loadingId, `<span class="text-red-500 italic">Error: ${error.message}</span><br><br><b>Tip:</b> Make sure your API key is correct and valid in Google AI Studio.`);
-            } finally {
-                btn.disabled = false;
-            }
+    // ── Main query handler ───────────────────────────────────────
+    window.handleQuery = async () => {
+        const apiKey = document.getElementById('apiKey').value.trim();
+        const prompt = document.getElementById('userInput').value.trim();
+        const btn    = document.getElementById('sendBtn');
+
+        if (!apiKey)  { alert("Enter your Gemini API Key first."); return; }
+        if (!pdfData) { alert("Upload a PDF document first."); return; }
+        if (!prompt)  return;
+
+        addMessage('user', prompt);
+        document.getElementById('userInput').value = '';
+        btn.disabled = true;
+
+        const loadingId = addThinking();
+        setStatus('thinking', 'Model is reading the document…');
+
+        try {
+            const answer = await queryGemini(apiKey, prompt);
+            replaceThinking(loadingId, answer);
+            setStatus('ready', 'Ready');
+        } catch (err) {
+            console.error(err);
+            replaceThinking(loadingId, `<span style="color:var(--error)">Error: ${err.message}</span>`, true);
+            setStatus('error', 'Error — check console for details');
+        } finally {
+            btn.disabled = false;
+        }
+    };
+
+    // ── Gemini REST call (v1 stable endpoint) ────────────────────
+    async function queryGemini(apiKey, userPrompt) {
+        // Use the v1 stable API — avoids the v1beta 404 for named model versions
+        const url = `https://generativelanguage.googleapis.com/v1/models/${chosenModel}:generateContent?key=${apiKey}`;
+
+        const systemInstruction = `You are a strict document Q&A assistant.
+RULES:
+- Answer ONLY using information explicitly present in the attached PDF document.
+- If the answer is not in the document, respond with: "I cannot find this information in the document."
+- Be concise and accurate. Do not add outside knowledge.`;
+
+        const body = {
+            contents: [
+                {
+                    role: "user",
+                    parts: [
+                        { inlineData: { mimeType: pdfMime, data: pdfData } },
+                        { text: `${systemInstruction}\n\nQUESTION: ${userPrompt}` }
+                    ]
+                }
+            ],
+            generationConfig: { temperature: 0.2, maxOutputTokens: 1024 }
         };
 
-        function addMessage(role, text) {
-            const chatBox = document.getElementById('chat-box');
-            const msgDiv = document.createElement('div');
-            const id = "msg-" + Date.now();
-            msgDiv.id = id;
-            msgDiv.className = `p-3 max-w-[85%] ${role === 'user' ? 'user-msg' : 'ai-msg'}`;
-            msgDiv.innerHTML = text;
-            chatBox.appendChild(msgDiv);
-            chatBox.scrollTop = chatBox.scrollHeight;
-            return id;
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+
+        if (!res.ok) {
+            const errBody = await res.json().catch(() => ({}));
+            const msg = errBody?.error?.message || `HTTP ${res.status}`;
+
+            // Auto-fallback: if 404 on current model, try the next one
+            if (res.status === 404 && MODELS.indexOf(chosenModel) < MODELS.length - 1) {
+                chosenModel = MODELS[MODELS.indexOf(chosenModel) + 1];
+                console.warn(`Model not found, retrying with ${chosenModel}…`);
+                return queryGemini(apiKey, userPrompt);
+            }
+
+            throw new Error(msg);
         }
 
-        function updateMessage(id, text) {
-            const element = document.getElementById(id);
-            if (element) element.innerHTML = text;
-        }
-    </script>
+        const data = await res.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) throw new Error("Empty response from model.");
+        return text;
+    }
+
+    // ── UI helpers ───────────────────────────────────────────────
+    function addMessage(role, html) {
+        const box = document.getElementById('chat-box');
+        const div = document.createElement('div');
+        div.className = `msg ${role}`;
+        div.innerHTML = `<div class="msg-label">// ${role === 'user' ? 'you' : 'assistant'}</div>${html}`;
+        box.appendChild(div);
+        box.scrollTop = box.scrollHeight;
+        return div;
+    }
+
+    function addThinking() {
+        const box = document.getElementById('chat-box');
+        const div = document.createElement('div');
+        const id  = 'think-' + Date.now();
+        div.id = id;
+        div.className = 'msg ai';
+        div.innerHTML = `<div class="msg-label">// assistant</div><div class="thinking"><span></span><span></span><span></span></div>`;
+        box.appendChild(div);
+        box.scrollTop = box.scrollHeight;
+        return id;
+    }
+
+    function replaceThinking(id, html, isError = false) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (isError) el.classList.add('error');
+        el.innerHTML = `<div class="msg-label">// assistant</div>${html}`;
+        document.getElementById('chat-box').scrollTop = 9999;
+    }
+
+    function setStatus(state, text) {
+        const dot  = document.getElementById('statusDot');
+        const span = document.getElementById('statusText');
+        dot.className = 'dot ' + (state === 'ready' ? 'ready' : state === 'error' ? 'error' : '');
+        span.textContent = text;
+    }
+</script>
 </body>
 </html>
