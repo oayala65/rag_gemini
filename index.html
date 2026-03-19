@@ -7,8 +7,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         #chat-box { height: 60vh; overflow-y: auto; scroll-behavior: smooth; }
-        .user-msg { background-color: #3b82f6; color: white; align-self: flex-end; }
-        .ai-msg { background-color: #f3f4f6; color: #1f2937; align-self: flex-start; }
+        .user-msg { background-color: #3b82f6; color: white; align-self: flex-end; border-radius: 12px 12px 2px 12px; }
+        .ai-msg { background-color: #f3f4f6; color: #1f2937; align-self: flex-start; border-radius: 12px 12px 12px 2px; }
     </style>
 </head>
 <body class="bg-slate-50 font-sans">
@@ -16,13 +16,13 @@
     <div class="max-w-4xl mx-auto p-4 md:p-8">
         <header class="text-center mb-8">
             <h1 class="text-3xl font-extrabold text-slate-800">📄 PDF RAG Chat</h1>
-            <p class="text-slate-500">Ask questions about your document</p>
+            <p class="text-slate-500 italic text-sm">Strictly using your PDF content</p>
         </header>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                 <label class="block text-sm font-semibold text-slate-700 mb-1">1. Your Gemini API Key</label>
-                <input type="password" id="apiKey" placeholder="Paste AIzaSy... key here" 
+                <input type="password" id="apiKey" placeholder="AIzaSy..." 
                     class="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none">
             </div>
             <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
@@ -32,14 +32,14 @@
             </div>
         </div>
 
-        <div id="chat-box" class="bg-white border border-slate-200 rounded-xl p-4 mb-4 flex flex-col gap-3 shadow-inner">
-            <div class="ai-msg p-3 rounded-lg max-w-[80%]">
-                Hello! Please enter your API key and upload a PDF to begin.
+        <div id="chat-box" class="bg-white border border-slate-200 rounded-xl p-4 mb-4 flex flex-col gap-3 shadow-inner min-h-[300px]">
+            <div class="ai-msg p-3 max-w-[80%]">
+                Hello! Enter your key and upload a PDF. I will only answer using information from that file.
             </div>
         </div>
 
         <div class="flex gap-2 bg-white p-2 rounded-xl shadow-md border border-slate-200">
-            <input type="text" id="userInput" placeholder="Ask something about the document..." 
+            <input type="text" id="userInput" placeholder="Ask a question..." 
                 class="flex-1 p-3 outline-none disabled:bg-slate-100 rounded-lg">
             <button onclick="handleQuery()" id="sendBtn" 
                 class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold transition-all disabled:opacity-50">
@@ -48,34 +48,21 @@
         </div>
     </div>
 
-    <!-- UPDATED: Using specific version of the SDK for stability -->
-    <script type="importmap">
-        {
-          "imports": {
-            "@google/generative-ai": "https://esm.run/@google/generative-ai@0.14.0"
-          }
-        }
-    </script>
-
+    <!-- SDK IMPORT -->
     <script type="module">
-        import { GoogleGenerativeAI } from "@google/generative-ai";
+        import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai@0.16.0";
 
         let pdfData = null;
 
+        // Process PDF to Base64
         document.getElementById('pdfFile').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
-            // Check file size (Gemini inline data limit is roughly 20MB for browser requests)
-            if (file.size > 15 * 1024 * 1024) {
-                alert("File too large. Please use a PDF under 15MB.");
-                return;
-            }
-
             const reader = new FileReader();
             reader.onload = function() {
                 pdfData = reader.result.split(',')[1];
-                addMessage('ai', `Successfully loaded: <b>${file.name}</b>. You can now ask questions.`);
+                addMessage('ai', `✅ Document "<b>${file.name}</b>" is ready.`);
             };
             reader.readAsDataURL(file);
         });
@@ -85,22 +72,28 @@
             const prompt = document.getElementById('userInput').value.trim();
             const btn = document.getElementById('sendBtn');
 
-            if (!apiKey) return alert("Please enter your Gemini API Key first.");
-            if (!pdfData) return alert("Please upload a PDF file first.");
+            if (!apiKey) return alert("Please enter your API Key.");
+            if (!pdfData) return alert("Please upload a PDF.");
             if (!prompt) return;
 
             addMessage('user', prompt);
             document.getElementById('userInput').value = '';
             btn.disabled = true;
-            const loadingMsgId = addMessage('ai', 'Searching document...');
+            const loadingId = addMessage('ai', 'Thinking...');
 
             try {
                 const genAI = new GoogleGenerativeAI(apiKey);
                 
-                // FIXED: Using "gemini-1.5-flash" (some versions require the explicit string)
-                const model = genAI.getGenerativeModel({ 
-                    model: "gemini-1.5-flash"
-                });
+                // Using gemini-1.5-flash-latest to avoid 404 version issues
+                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+
+                // Constructing a strict prompt
+                const strictPrompt = `
+                    INSTRUCTIONS: Use ONLY the following PDF content to answer the question. 
+                    If the answer is not in the document, say "I cannot find this in the document."
+                    
+                    QUESTION: ${prompt}
+                `;
 
                 const result = await model.generateContent([
                     {
@@ -109,15 +102,15 @@
                             mimeType: "application/pdf"
                         }
                     },
-                    { text: `System Instruction: Answer the user's question strictly using only the information from the provided PDF. If the answer is not in the PDF, say "I cannot find that info in the document."\n\nUser Question: ${prompt}` }
+                    { text: strictPrompt }
                 ]);
 
                 const responseText = result.response.text();
-                updateMessage(loadingMsgId, responseText);
+                updateMessage(loadingId, responseText);
 
             } catch (error) {
                 console.error(error);
-                updateMessage(loadingMsgId, `<span class="text-red-500 italic">Error: ${error.message}</span>`);
+                updateMessage(loadingId, `<span class="text-red-500 italic">Error: ${error.message}</span><br><br><b>Tip:</b> Make sure your API key is correct and valid in Google AI Studio.`);
             } finally {
                 btn.disabled = false;
             }
@@ -128,7 +121,7 @@
             const msgDiv = document.createElement('div');
             const id = "msg-" + Date.now();
             msgDiv.id = id;
-            msgDiv.className = `p-3 rounded-lg max-w-[85%] ${role === 'user' ? 'user-msg' : 'ai-msg'}`;
+            msgDiv.className = `p-3 max-w-[85%] ${role === 'user' ? 'user-msg' : 'ai-msg'}`;
             msgDiv.innerHTML = text;
             chatBox.appendChild(msgDiv);
             chatBox.scrollTop = chatBox.scrollHeight;
@@ -137,11 +130,7 @@
 
         function updateMessage(id, text) {
             const element = document.getElementById(id);
-            if (element) {
-                element.innerHTML = text;
-                const chatBox = document.getElementById('chat-box');
-                chatBox.scrollTop = chatBox.scrollHeight;
-            }
+            if (element) element.innerHTML = text;
         }
     </script>
 </body>
