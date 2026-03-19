@@ -34,7 +34,6 @@
             padding: 2rem 1rem;
         }
 
-        /* Subtle grid background */
         body::before {
             content: '';
             position: fixed;
@@ -58,10 +57,7 @@
             gap: 1.25rem;
         }
 
-        header {
-            text-align: center;
-            padding: 1rem 0 0.5rem;
-        }
+        header { text-align: center; padding: 1rem 0 0.5rem; }
 
         header h1 {
             font-family: 'IBM Plex Mono', monospace;
@@ -71,9 +67,7 @@
             color: var(--text);
         }
 
-        header h1 span {
-            color: var(--accent);
-        }
+        header h1 span { color: var(--accent); }
 
         header p {
             color: var(--muted);
@@ -107,8 +101,7 @@
             margin-bottom: 0.5rem;
         }
 
-        .config-card input[type="password"],
-        .config-card select {
+        .config-card input[type="password"] {
             width: 100%;
             background: var(--surface2);
             border: 1px solid var(--border);
@@ -121,12 +114,7 @@
             transition: border-color 0.2s;
         }
 
-        .config-card input[type="password"]:focus,
-        .config-card select:focus {
-            border-color: var(--accent);
-        }
-
-        .config-card select option { background: var(--surface2); }
+        .config-card input[type="password"]:focus { border-color: var(--accent); }
 
         .file-label {
             display: flex;
@@ -146,7 +134,6 @@
         .file-label.ready { border-color: var(--success); color: var(--success); }
         .file-label input { display: none; }
 
-        /* Chat */
         #chat-box {
             background: var(--surface);
             border: 1px solid var(--border);
@@ -206,7 +193,6 @@
             text-transform: uppercase;
         }
 
-        /* Thinking dots */
         .thinking span {
             display: inline-block;
             width: 6px; height: 6px;
@@ -222,7 +208,6 @@
             40% { transform: translateY(-6px); }
         }
 
-        /* Input bar */
         .input-bar {
             display: flex;
             gap: 0.5rem;
@@ -244,7 +229,6 @@
         }
 
         .input-bar input::placeholder { color: var(--muted); }
-
         .input-bar input:disabled { opacity: 0.5; }
 
         #sendBtn {
@@ -327,27 +311,19 @@
 </div>
 
 <script type="module">
-    // ─── FIX: Use the v1 (stable) endpoint via direct fetch instead of the SDK
-    // The SDK defaults to v1beta which no longer supports gemini-1.5-flash by name.
-    // We call the REST API directly with the correct endpoint.
-
     const MODELS = [
         "gemini-2.0-flash",
         "gemini-1.5-flash-001",
         "gemini-1.5-pro-001",
     ];
 
-    // Try to pick a working model automatically
     let chosenModel = MODELS[0];
-
     let pdfData = null;
-    let pdfMime = "application/pdf";
+    const pdfMime = "application/pdf";
 
-    // ── File upload ──────────────────────────────────────────────
     document.getElementById('pdfFile').addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
-
         const reader = new FileReader();
         reader.onload = function () {
             pdfData = reader.result.split(',')[1];
@@ -359,12 +335,10 @@
         reader.readAsDataURL(file);
     });
 
-    // ── Send on Enter ────────────────────────────────────────────
     document.getElementById('userInput').addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleQuery(); }
     });
 
-    // ── Main query handler ───────────────────────────────────────
     window.handleQuery = async () => {
         const apiKey = document.getElementById('apiKey').value.trim();
         const prompt = document.getElementById('userInput').value.trim();
@@ -394,9 +368,7 @@
         }
     };
 
-    // ── Gemini REST call (v1 stable endpoint) ────────────────────
     async function queryGemini(apiKey, userPrompt) {
-        // Use the v1 stable API — avoids the v1beta 404 for named model versions
         const url = `https://generativelanguage.googleapis.com/v1/models/${chosenModel}:generateContent?key=${apiKey}`;
 
         const systemInstruction = `You are a strict document Q&A assistant.
@@ -428,7 +400,6 @@ RULES:
             const errBody = await res.json().catch(() => ({}));
             const msg = errBody?.error?.message || `HTTP ${res.status}`;
 
-            // Auto-fallback: if 404 on current model, try the next one
             if (res.status === 404 && MODELS.indexOf(chosenModel) < MODELS.length - 1) {
                 chosenModel = MODELS[MODELS.indexOf(chosenModel) + 1];
                 console.warn(`Model not found, retrying with ${chosenModel}…`);
@@ -444,7 +415,6 @@ RULES:
         return text;
     }
 
-    // ── UI helpers ───────────────────────────────────────────────
     function addMessage(role, html) {
         const box = document.getElementById('chat-box');
         const div = document.createElement('div');
